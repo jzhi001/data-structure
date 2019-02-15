@@ -40,4 +40,16 @@ IntVector *IntVectorRemoveTail(IntVector *vector, int64_t *val);
 
 int64_t IntVectorBinarySearch(IntVector *vector, int64_t x);
 
+typedef struct{
+    IntVector *vector;
+    int direction;
+    int64_t curIdx;
+} IntVectorIterator;
+
+
+IntVectorIterator *IntVectorIteratorNew(IntVector *vector);
+IntVectorIterator *IntVectorReverseIteratorNew(IntVector *vector);
+int IntVectorIteratorHasNext(IntVectorIterator *iter);
+int64_t IntVectorIteratorNext(IntVectorIterator *iter);
+
 #endif //INT_VECTOR_H

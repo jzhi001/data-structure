@@ -305,7 +305,49 @@ int64_t IntVectorBinarySearch(IntVector *vector, int64_t x) {
     return -1;
 }
 
-//#define INT_VECTOR_TEST
+#define IV_ITER_HEAD 1
+#define IV_ITER_TAIL 0
+static IntVectorIterator *iv_iter_new(IntVector *vector, int direction){
+    IntVectorIterator *iter;
+    if((iter = malloc(sizeof(*iter))) == NULL){
+        panic("IntVector Iterator malloc failed\n");
+    }
+    iter->vector = vector;
+    iter->direction = direction;
+    iter->curIdx = -1;
+    return iter;
+}
+
+IntVectorIterator *IntVectorIteratorNew(IntVector *vector){
+    return iv_iter_new(vector, IV_ITER_HEAD);
+}
+
+IntVectorIterator *IntVectorReverseIteratorNew(IntVector *vector){
+    return iv_iter_new(vector, IV_ITER_TAIL);
+}
+
+int IntVectorIteratorHasNext(IntVectorIterator *iter){
+    if(IntVectorIsEmpty(iter->vector)){
+        return 0;
+    }else{
+        if(iter->direction == IV_ITER_HEAD){
+            return iter->curIdx < iv_lastIdx(iter->vector);
+        }else{
+            return iter->curIdx >= 1;
+        }
+    }
+}
+
+int64_t IntVectorIteratorNext(IntVectorIterator *iter){
+    if(iter->direction == IV_ITER_HEAD){
+        iter->curIdx++;
+    }else{
+        iter->curIdx--;
+    }
+    return iv_valueAt(iter->vector, iter->curIdx);
+}
+
+#define INT_VECTOR_TEST
 #ifdef INT_VECTOR_TEST
 
 #include <assert.h>
@@ -322,6 +364,22 @@ int main() {
     assert(9 == IntVectorBinarySearch(vector, 9));
     assert(0 == IntVectorBinarySearch(vector, 0));
     assert(-1 == IntVectorBinarySearch(vector, 100));
+
+    IntVectorIterator *iter = IntVectorIteratorNew(vector);
+    int correct = 0;
+    while (IntVectorIteratorHasNext(iter)){
+        int64_t x = IntVectorIteratorNext(iter);
+        assert(correct == x);
+        correct++;
+    }
+
+    correct = 9;
+    iter = IntVectorReverseIteratorNew(vector);
+    while (IntVectorIteratorHasNext(iter)){
+        int64_t x = IntVectorIteratorNext(iter);
+        assert(correct == x);
+        correct--;
+    }
 
     int succ = 0;
     for(int i=0; i<10; i++){
