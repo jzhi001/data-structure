@@ -10,6 +10,8 @@
 typedef IntVector IntSet;
 
 IntSet *IntSetNew();
+void IntSetFree(IntSet *set);
+
 uint32_t IntSetSize(IntSet *set);
 int IntSetIsEmpty(IntSet *set);
 IntSet *IntSetPut(IntSet *set, int64_t val, int *ret);

@@ -1,5 +1,6 @@
 #include "int_vector.h"
 #include "panic.h"
+#include "integer.h"
 #include <string.h>
 
 static inline size_t iv_headerBytes() {
@@ -35,18 +36,9 @@ static inline size_t iv_totalBytes(IntVector *vector) {
     return iv_headerBytes() + IntVectorSize(vector) * iv_getEncoding(vector);
 }
 
-#define INT_BYTES(type) (sizeof(int##type##_t))
 
 static inline uint8_t iv_encodingOf(int64_t val) {
-    if (val <= INT8_MAX && val >= INT8_MIN) {
-        return INT_BYTES(8);
-    } else if (val <= INT16_MAX && val >= INT16_MIN) {
-        return INT_BYTES(16);
-    } else if (val <= INT32_MAX && val >= INT32_MIN) {
-        return INT_BYTES(32);
-    } else {
-        return INT_BYTES(64);
-    }
+    return bytesForInt(val);
 }
 
 static inline char *iv_firstElement(IntVector *vector) {
@@ -69,54 +61,23 @@ static inline void iv_validIndex(IntVector *vector, int64_t idx) {
 }
 
 static inline int64_t iv_lastIdx(IntVector *vector) {
-    return (int64_t)IntVectorSize(vector) - 1;
+    return (int64_t) IntVectorSize(vector) - 1;
 }
 
 static inline int64_t iv_valueAtIdxByEncoding(IntVector *vector, int64_t idx, uint8_t encoding) {
     iv_validIndex(vector, idx);
     char *ele = iv_elementAtIdxByType(vector, idx, encoding);
-    switch (encoding) {
-        case 1:
-            return ((int8_t *) ele)[0];
-
-        case 2:
-            return ((int16_t *) ele)[0];
-
-        case 4:
-            return ((int32_t *) ele)[0];
-
-        case 8:
-            return ((int64_t *) ele)[0];
-
-        default:
-            panic("unknown bytes: %d\n", encoding);
-            break;
-    }
+    return int_getValue(ele, encoding);
 }
 
 static inline int64_t iv_valueAt(IntVector *vector, int64_t idx) {
     return iv_valueAtIdxByEncoding(vector, idx, iv_getEncoding(vector));
 }
 
+
 static inline void iv_setValueAt(IntVector *vector, int64_t idx, int64_t val) {
     char *ele = iv_elementAt(vector, idx);
-    switch (iv_getEncoding(vector)) {
-        case INT_BYTES(8):
-            ((int8_t *) ele)[0] = (int8_t) val;
-            break;
-        case INT_BYTES(16):
-            ((int16_t *) ele)[0] = (int16_t) val;
-            break;
-        case INT_BYTES(32):
-            ((int32_t *) ele)[0] = (int32_t) val;
-            break;
-        case INT_BYTES(64):
-            ((int64_t *) ele)[0] = (int64_t) val;
-            break;
-        default:
-            panic("unknown encoding: %d\n", iv_getEncoding(vector));
-            break;
-    }
+    int_setValue(ele, val);
 }
 
 static IntVector *iv_resize(IntVector *vector, size_t size) {
@@ -152,8 +113,12 @@ IntVector *IntVectorNew() {
         panic("IntVector malloc failed");
     }
     iv_setSize(vector, 0);
-    iv_setEncoding(vector, INT_BYTES(8));
+    iv_setEncoding(vector, INT8_BYTES);
     return vector;
+}
+
+inline void IntVectorFree(IntVector *vector){
+    free(vector);
 }
 
 IntVector *IntVectorSetValueAt(IntVector *vector, int64_t val, int64_t idx) {
@@ -203,7 +168,7 @@ static inline void iv_shiftOneStepAtRight(IntVector *vector, int64_t start, int6
 
     int64_t i = end;
     if (end + 1 >= IntVectorSize(vector)) {
-        panic("No extra space for shifting right\n");
+        panic("No extra space for shifting right: start %ld end %ld size %ld\n", start, end, IntVectorSize(vector));
     }
     while (i >= start) {
         int64_t val = IntVectorValueAt(vector, i);
@@ -218,13 +183,15 @@ IntVector *IntVectorInsert(IntVector *vector, int64_t val, int64_t idx) {
     } else if (IntVectorIsFull(vector)) {
         panic("IntVector is full\n");
     }
+//    printf("insert %ld at %ld, size %d\n", val, idx, IntVectorSize(vector));
     if (idx > iv_lastIdx(vector)) {
         return IntVectorSetValueAt(vector, val, idx);
     } else {
         vector = iv_makeRoom(vector, 1);
-        iv_shiftOneStepAtRight(vector, idx, iv_lastIdx(vector));
-        iv_setValueAt(vector, idx, val);
+        int64_t tail = iv_lastIdx(vector);
         iv_setSize(vector, IntVectorSize(vector) + 1);
+        iv_shiftOneStepAtRight(vector, idx, tail);
+        iv_setValueAt(vector, idx, val);
         return vector;
     }
 }
@@ -262,19 +229,19 @@ IntVector *IntVectorRemove(IntVector *vector, int64_t val, int *success) {
     return vector;
 }
 
-IntVector *IntVectorRemoveHead(IntVector *vector, int64_t *val){
-    if(IntVectorIsEmpty(vector)){
+IntVector *IntVectorRemoveHead(IntVector *vector, int64_t *val) {
+    if (IntVectorIsEmpty(vector)) {
         panic("IntVector remove from empty vector\n");
     }
-    if(val) *val = IntVectorValueAt(vector, 0);
+    if (val) *val = IntVectorValueAt(vector, 0);
     return IntVectorRemoveAt(vector, 0);
 }
 
-IntVector *IntVectorRemoveTail(IntVector *vector, int64_t *val){
-    if(IntVectorIsEmpty(vector)){
+IntVector *IntVectorRemoveTail(IntVector *vector, int64_t *val) {
+    if (IntVectorIsEmpty(vector)) {
         panic("IntVector remove from empty vector\n");
     }
-    if(val) *val = IntVectorValueAt(vector, iv_lastIdx(vector));
+    if (val) *val = IntVectorValueAt(vector, iv_lastIdx(vector));
     return IntVectorRemoveAt(vector, iv_lastIdx(vector));
 }
 
@@ -307,9 +274,10 @@ int64_t IntVectorBinarySearch(IntVector *vector, int64_t x) {
 
 #define IV_ITER_HEAD 1
 #define IV_ITER_TAIL 0
-static IntVectorIterator *iv_iter_new(IntVector *vector, int direction){
+
+static IntVectorIterator *iv_iter_new(IntVector *vector, int direction) {
     IntVectorIterator *iter;
-    if((iter = malloc(sizeof(*iter))) == NULL){
+    if ((iter = malloc(sizeof(*iter))) == NULL) {
         panic("IntVector Iterator malloc failed\n");
     }
     iter->vector = vector;
@@ -318,36 +286,36 @@ static IntVectorIterator *iv_iter_new(IntVector *vector, int direction){
     return iter;
 }
 
-IntVectorIterator *IntVectorIteratorNew(IntVector *vector){
+IntVectorIterator *IntVectorIteratorNew(IntVector *vector) {
     return iv_iter_new(vector, IV_ITER_HEAD);
 }
 
-IntVectorIterator *IntVectorReverseIteratorNew(IntVector *vector){
+IntVectorIterator *IntVectorReverseIteratorNew(IntVector *vector) {
     return iv_iter_new(vector, IV_ITER_TAIL);
 }
 
-int IntVectorIteratorHasNext(IntVectorIterator *iter){
-    if(IntVectorIsEmpty(iter->vector)){
+int IntVectorIteratorHasNext(IntVectorIterator *iter) {
+    if (IntVectorIsEmpty(iter->vector)) {
         return 0;
-    }else{
-        if(iter->direction == IV_ITER_HEAD){
+    } else {
+        if (iter->direction == IV_ITER_HEAD) {
             return iter->curIdx < iv_lastIdx(iter->vector);
-        }else{
+        } else {
             return iter->curIdx >= 1;
         }
     }
 }
 
-int64_t IntVectorIteratorNext(IntVectorIterator *iter){
-    if(iter->direction == IV_ITER_HEAD){
+int64_t IntVectorIteratorNext(IntVectorIterator *iter) {
+    if (iter->direction == IV_ITER_HEAD) {
         iter->curIdx++;
-    }else{
+    } else {
         iter->curIdx--;
     }
     return iv_valueAt(iter->vector, iter->curIdx);
 }
 
-#define INT_VECTOR_TEST
+//#define INT_VECTOR_TEST
 #ifdef INT_VECTOR_TEST
 
 #include <assert.h>

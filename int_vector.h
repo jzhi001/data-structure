@@ -20,6 +20,8 @@ typedef struct __attribute__((__packed__)){
 #define INT_VECTOR_MAX_SIZE UINT32_MAX
 
 IntVector *IntVectorNew();
+void IntVectorFree(IntVector *vector);
+
 uint32_t IntVectorSize(IntVector *vector);
 int IntVectorIsEmpty(IntVector *vector);
 int IntVectorIsFull(IntVector *vector);

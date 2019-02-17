@@ -5,6 +5,10 @@ inline IntSet *IntSetNew(){
     return IntVectorNew();
 }
 
+inline void IntSetFree(IntSet *set){
+    IntVectorFree(set);
+}
+
 inline uint32_t IntSetSize(IntSet *set){
     return IntVectorSize(set);
 }
